@@ -5,23 +5,30 @@ import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import com.example.homework.notification.sender.EmailSender;
 
 @SpringBootTest 
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 public class LegacyNotificationEngineIntegrationTest {
 
   @Autowired
   private LegacyNotificationEngine engine;
 
   @MockitoSpyBean
-  private EmailSender emailSender; 
+  private EmailSender emailSender;
+
+  @Autowired private JdbcTemplate jdbcTemplate;
+
+  @BeforeEach
+  void clearTable() { 
+    jdbcTemplate.update("delete from ntf_tx"); 
+  }
 
   @Test
   public void emailSuccessIsStoredAsSent() throws Exception {
