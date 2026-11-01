@@ -1,78 +1,62 @@
 # Homework - Notification Dispatch Service
 
-Click **Use this template → Create a new repository**. Create a **private** repository under your own account and invite orion-homework-dev as a collaborator. Complete the assignment and send us your repository link. Please do not publish your solution or open a pull request against this template.
+An application that sends EMAIL, SMS and PUSH notifications, records every attempt, and rejects blocked or rate-limited recipients and channels that keep failing.
 
-## Objective
+Java 17, Spring Boot 4.1, H2 (in memory), Flyway.
 
-Refactor the legacy code to a production ready solution for the notification dispatch service that is maintainable, readable, and scalable using modern practices.
+## Run
 
-This exercise is intended to be completed in approximately 4 hours.
+```bash
+./gradlew bootRun
+```
+```bash
+./gradlew test
+```
 
-The application sends `EMAIL`, `SMS`, and `PUSH` notifications, stores the outcome of those attempts, and enforces the operational safeguards already present in the system. 
-The goal is to improve the design so the code is easier to understand, easier to extend, and more robust without changing the behavior that matters.
+- POST /api/notifications/send    {"type":"EMAIL","target":"test@example.com","payload":"hi"}
+- GET  /api/notifications/latest
+- GET  /api/notifications/history?page=0&size=20
 
-This is a design and refactoring exercise. The focus is on making a small system feel thoughtful, clean, and ready for change. 
-It also acknowledges that existing API boundaries and persistence design may not be ideal and should be improved.
+Types: EMAIL, SMS, PUSH
 
-## System summary
+## Problems found in the legacy code
 
-The service is responsible for:
+- The circuit breaker never recovered. After 3 failures every request was skipped, and only a successful send reset it.
+- The circuit breaker was global, so one channel's failures blocked the others.
+- Ids were `max(id) + 1`, which only worked because the whole method was `synchronized`, so every send waited for every other send.
+- "Blocked" and "error" were substring checks in production code.
+- Everything failed as a 500, and `schema.sql` dropped the table on every start.
 
-- sending notifications to different channels
-- tracking the result of each attempt
-- rejecting unsupported notification types
-- rejecting blocked or rate-limited recipients
-- recording failures and applying a simple rejection path after repeated problems
+## Behavior kept
 
-## Core expectations
+- 3 requests per minute are accepted for a recipient, further requests are rejected.
+- Blocked recipients and unsupported types are rejected.
+- Failed attempts are saved.
+- 3 failures in a row open the circuit breaker.
 
-The solution should be clear and defensible.
+## Behavior changed
 
-The project should demonstrate sound engineering judgment through:
+- Unknown type fails with `400` and nothing is saved (before: `500`, saved with status `U`).
+- Blocked recipients fail with `403` and rate limited requests with `429`.
+- Breaker open returns `503`, and it closes again after 5 minutes.
+- Provider failure returns `502`, and the failed attempt is saved.
+- `/latest` with no data returns `404` instead of `200` with an empty body.
+- The path moved from `/api/legacy/notifications` to `/api/notifications`.
 
-- clear, readable code
-- sensible use of current best practices
-- no unnecessary complexity
+The breaker is per channel and opens after 3 failures in a row. One success resets it, as before.
 
-## Behavior to preserve
+## Design choices
 
-The system must continue to support the existing notification types and operational safeguards:
+- Blocked targets come from config (exact match, lowercase). A table with endpoints would be better, but I didn't build it.
+- One exception class carries the status, instead of one class per error.
+- Each channel is a class behind an interface, so a new channel doesn't change the service.
+- Flyway manages the schema, so restarting doesn't delete data. The old `ntf_tx` table is dropped without migrating data, since the old database was in memory and started empty.
+- No `@Transactional` on send. The FAILED row has to stay saved after the 502.
+- Payloads are never logged or returned. Targets aren't logged either.
 
-- `EMAIL`
-- `SMS`
-- `PUSH`
-- blocked or rate-limited recipients are rejected
-- unsupported notification types fail clearly
-- failures are tracked
-- repeated failures eventually trigger a simple rejection path
+## Not done
 
-## What matters most
-
-We care about:
-
-- correctness
-- maintainability
-- readability
-- clear design decisions
-- practical modernization
-- scalability
-
-## Development process
-
-Please keep a record of the changes you make and why you make them. Preferably, use small, meaningful Git commits with messages that explain both the change and its rationale. Brief notes in the README can supplement the commit history, especially for trade-offs or alternatives you considered.
-
-## Constraints
-
-The solution must use Java and Spring Boot. You may upgrade the Java version and dependencies.
-
-Everything else may be redesigned or rewritten, including the API, database schema, persistence approach, and project structure, provided the behavior described above is preserved.
-
-Keep the solution proportional to the problem. The goal is to transform a small but messy system into something clean, understandable, and fit for future change.
-
-
-## Bonus points
-
-These are not required for the core task, but they can earn additional credit if included well:
-
-- adding a update endpoint for notifications
-- introducing a proper blacklist functionality to enforcement flow for blocked recipients
+- No real email, SMS or push provider.
+- The bonus tasks (update endpoint, blacklist table).
+- The rate limit can be exceeded if many requests for the same recipient arrive at the same moment.
+- Sending happens inside the request. A queue with background workers would be better for production.
