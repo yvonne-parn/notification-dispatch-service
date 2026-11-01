@@ -3,32 +3,26 @@ package com.example.homework.notification;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 
+import com.example.homework.notification.sender.NotificationSender;
+
 @Service
-public class LegacyNotificationEngine implements InitializingBean {
+public class LegacyNotificationEngine {
 
-  private static final Map<String, INotificationHandler> REGISTRY = new HashMap<String, INotificationHandler>();
-
+  private final Map<String, NotificationSender> senders;
   private final LegacyDatabaseManager dbManager;
 
-  public LegacyNotificationEngine(JdbcTemplate jdbcTemplate) {
+  public LegacyNotificationEngine(JdbcTemplate jdbcTemplate, List<NotificationSender> senderList) {
     this.dbManager = new LegacyDatabaseManager(jdbcTemplate);
-  }
-
-  @Override
-  public void afterPropertiesSet() {
-    REGISTRY.clear();
-    REGISTRY.put("EMAIL", new EmailHandler());
-    REGISTRY.put("SMS", new SmsHandler());
-    REGISTRY.put("PUSH", new PushHandler());
+    this.senders = senderList.stream().collect(Collectors.toMap(s -> s.type().name(), Function.identity()));
   }
 
   public synchronized LegacyNotificationResponse processNotification(String type, String target, String payload)
@@ -53,7 +47,8 @@ public class LegacyNotificationEngine implements InitializingBean {
       throw new RuntimeException("Circuit breaker OPEN via database state.");
     }
 
-    INotificationHandler handler = REGISTRY.get(safeType);
+    NotificationSender handler = senders.get(safeType);
+
     if (handler == null) {
       System.out.println("LOGGING TO DB: Unknown type attempted -> " + type);
       dbManager.recordUnsupportedType(id, safeType);
@@ -61,7 +56,7 @@ public class LegacyNotificationEngine implements InitializingBean {
     }
 
     try {
-      handler.execute(safeTarget, safePayload);
+      handler.send(safeTarget, safePayload);
       dbManager.resetDatabaseFailures(id);
       return dbManager.getDispatchById(id);
     } catch (Exception e) {
@@ -275,34 +270,6 @@ public class LegacyNotificationEngine implements InitializingBean {
         return value;
       }
       return value.substring(0, 255);
-    }
-  }
-
-  private interface INotificationHandler {
-    void execute(String target, String payload) throws Exception;
-  }
-
-  private static class EmailHandler implements INotificationHandler {
-    @Override
-    public void execute(String target, String payload) throws Exception {
-      if (target != null && target.contains("error")) {
-        throw new RuntimeException("SMTP Timeout");
-      }
-      System.out.println("[EMAIL] " + target + " -> " + payload);
-    }
-  }
-
-  private static class SmsHandler implements INotificationHandler {
-    @Override
-    public void execute(String target, String payload) {
-      System.out.println("[SMS] " + target + " -> " + payload);
-    }
-  }
-
-  private static class PushHandler implements INotificationHandler {
-    @Override
-    public void execute(String target, String payload) {
-      System.out.println("[PUSH] " + target + " -> " + payload);
     }
   }
 }

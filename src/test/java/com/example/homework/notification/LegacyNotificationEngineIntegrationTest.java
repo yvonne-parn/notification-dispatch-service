@@ -2,11 +2,16 @@ package com.example.homework.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+
+import com.example.homework.notification.sender.EmailSender;
 
 @SpringBootTest 
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
@@ -14,6 +19,9 @@ public class LegacyNotificationEngineIntegrationTest {
 
   @Autowired
   private LegacyNotificationEngine engine;
+
+  @MockitoSpyBean
+  private EmailSender emailSender; 
 
   @Test
   public void emailSuccessIsStoredAsSent() throws Exception {
@@ -55,9 +63,11 @@ public class LegacyNotificationEngineIntegrationTest {
 
   @Test
   public void threeFailuresOpenCircuitBreakerForNextAttempt() {
+    doThrow(new RuntimeException("SMTP Timeout")).when(emailSender).send(any(), any());
+
     for (int i = 0; i < 3; i++) {
       try {
-        engine.processNotification("EMAIL", "error-user@example.com", "boom");
+        engine.processNotification("EMAIL", "failing-user@example.com", "boom");
         fail("Expected email failure");
       } catch (RuntimeException ex) {
         assertThat(ex.getMessage()).isEqualTo("SMTP Timeout");
