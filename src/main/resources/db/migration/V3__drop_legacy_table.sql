@@ -1,0 +1,1 @@
+drop table ntf_tx;
