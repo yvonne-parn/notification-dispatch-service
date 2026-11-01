@@ -14,6 +14,9 @@ import jakarta.persistence.Table;
 @Entity 
 @Table(name = "notification")
 public class Notification {
+
+    private static final int MAX_FAILURE_REASON_LENGTH = 255;
+
     @Id 
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -42,7 +45,15 @@ public class Notification {
     
     protected Notification() {}
 
-    public Notification(NotificationType type, String target, String payload, NotificationStatus status, String failureReason, Instant now) {
+    public static Notification sent(NotificationType type, String target, String payload, Instant now) {
+        return new Notification(type, target, payload, NotificationStatus.SENT, null, now);
+    }
+    
+    public static Notification failed(NotificationType type, String target, String payload, String reason, Instant now) {
+        return new Notification(type, target, payload, NotificationStatus.FAILED, truncate(reason), now);
+    }
+
+    private Notification(NotificationType type, String target, String payload, NotificationStatus status, String failureReason, Instant now) {
         this.type = type;
         this.target = target;
         this.payload = payload;
@@ -50,6 +61,13 @@ public class Notification {
         this.failureReason = failureReason;
         this.createdAt = now;
         this.updatedAt = now;
+    }
+
+    private static String truncate(String reason) {
+        if (reason == null || reason.length() <= MAX_FAILURE_REASON_LENGTH) {
+            return reason;
+        }
+        return reason.substring(0, MAX_FAILURE_REASON_LENGTH);
     }
 
     public Long getId() { return id; }
