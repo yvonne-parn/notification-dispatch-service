@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 
 import com.example.homework.notification.NotificationProperties.CircuitBreaker;
@@ -226,5 +229,44 @@ class NotificationServiceTest {
     void constructorFailsWhenAChannelHasNoSender() {
         assertThrows(IllegalStateException.class,
                 () -> new NotificationService(repository, List.of(senderOf(NotificationType.EMAIL)), CLOCK, properties));
+    }
+
+    @Test 
+    void getLatestStateReturnsNewestNotification() {
+        when(repository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(Notification.sent(NotificationType.EMAIL, "target@example.com", "payload", CLOCK.instant())));
+
+        NotificationResponse result = serviceWith(senderOf(NotificationType.EMAIL)).getLatestState();
+
+        assertEquals(NotificationStatus.SENT, result.status());
+        assertEquals("target@example.com", result.target());
+    }
+
+    @Test 
+    void getLatestStateReturnsNotFoundWhenThereAreNoNotifications() {
+        when(repository.findFirstByOrderByIdDesc()).thenReturn(Optional.empty());
+
+        NotificationException ex = assertThrows(NotificationException.class, () -> serviceWith(senderOf(NotificationType.EMAIL)).getLatestState());
+
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
+    }
+
+    @Test
+    void getHistoryReturnsTheRequestedPageNewestFirst() {
+        when(repository.findAllBy(any(Pageable.class))).thenReturn(List.of((Notification.sent(NotificationType.EMAIL, "target@example.com", "payload", CLOCK.instant()))));
+
+        List<NotificationResponse> response = serviceWith(senderOf(NotificationType.EMAIL)).getHistory(1,1);
+
+        assertEquals(1, response.size());
+        assertEquals("target@example.com", response.get(0).target());
+        verify(repository).findAllBy(PageRequest.of(1, 1, Sort.by(Sort.Direction.DESC, Notification::getId)));
+    }
+
+    @Test 
+    void getHistoryReturnsEmptyListWhenNothingIsSaved() {
+        when(repository.findAllBy(any(Pageable.class))).thenReturn(List.of());
+
+        List<NotificationResponse> response = serviceWith(senderOf(NotificationType.EMAIL)).getHistory(1,1);
+
+        assertEquals(0, response.size());
     }
 }

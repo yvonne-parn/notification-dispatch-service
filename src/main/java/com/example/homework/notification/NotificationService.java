@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -35,6 +36,17 @@ public class NotificationService {
         }
         this.properties = properties;
         this.clock = clock;
+    }
+
+    public NotificationResponse getLatestState() {
+        return repository.findFirstByOrderByIdDesc()
+                .map(NotificationResponse::from)
+                .orElseThrow(() -> new NotificationException(HttpStatus.NOT_FOUND, "No notifications yet"));
+    }
+
+    public List<NotificationResponse> getHistory(int page, int size) {
+        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, Notification::getId));
+        return repository.findAllBy(pageRequest).stream().map(NotificationResponse::from).toList();
     }
 
     public NotificationResponse send(NotificationRequest request) {
