@@ -68,6 +68,7 @@ public class NotificationService {
         }
 
         Notification saved = repository.save(Notification.sent(type, target, request.payload(), clock.instant()));
+        log.info("Notification {} sent via {}", saved.getId(), type);
         return NotificationResponse.from(saved);
     }
 

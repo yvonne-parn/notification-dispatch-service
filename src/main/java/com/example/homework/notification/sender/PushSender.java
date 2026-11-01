@@ -1,14 +1,11 @@
 package com.example.homework.notification.sender;
 
-import java.util.logging.Logger;
-
 import org.springframework.stereotype.Component;
 
 import com.example.homework.notification.NotificationType;
 
 @Component
 public class PushSender implements NotificationSender {
-    Logger logger = Logger.getLogger(PushSender.class.getName());
 
     @Override
     public NotificationType type() {
@@ -17,6 +14,6 @@ public class PushSender implements NotificationSender {
 
     @Override
     public void send(String target, String payload) {
-        logger.info("Sending PUSH to " + target);
+        // Simulate sending a push notification
     }
 }
